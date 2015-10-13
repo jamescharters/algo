@@ -17,7 +17,9 @@ class LDA:
             z = z_new
             i += 1
             if t <= i: break
-        return z
+        theta = self.compute_theta(ndk)
+        phi = self.compute_phi(nkv)
+        return (z, theta, phi)
 
     def initialize_z(self, X, k):
         z = []
@@ -71,6 +73,23 @@ class LDA:
                 z[d].append(np.argmax(np.random.multinomial(n=1, pvals=prob, size=1)))
         return z
 
+    def compute_theta(self, ndk):
+        ndk = np.array(ndk)
+        theta = []
+        for d in range(ndk.shape[0]):
+            theta.append(np.random.dirichlet(alpha=ndk[d]+self.alpha, size=1))
+        theta = np.vstack(theta)
+        return theta
+
+    def compute_phi(self, nkv):
+        nkv = np.array(nkv)
+        phi = []
+        for k in range(nkv.shape[0]):
+            phi.append(np.random.dirichlet(alpha=nkv[k]+self.beta, size=1))
+        phi = np.vstack(phi)
+        return phi
+
+
 if __name__ == '__main__':
     X = [[0,0,1,1,2,2],[0,1,2],[3,4],[0,1,1,1,2],[3,4,4],[3,3,4,4],[0,0,4,4]]
     n_topics = 2
@@ -78,6 +97,8 @@ if __name__ == '__main__':
     alpha = np.array([0.1]*n_topics)
     beta= np.array([0.1]*n_vocab)
     lda = LDA(alpha=alpha, beta=beta)
-    z = lda.fit(X,len(alpha), 1000)
+    z, theta, phi = lda.fit(X,len(alpha), 1000)
     print X
     print z
+    print theta
+    print phi
