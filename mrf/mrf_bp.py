@@ -1,82 +1,81 @@
+import numpy as np
+from scipy.sparse import lil_matrix
+from scipy.misc import logsumexp
 class MRF:
-  def __init__(self,phi,psi,G,L):
-    self.phi = phi # node potentials
-    self.psi = psi # edge potentials
-    self.G = G
-    self.GR = self.make_GR(G)
-    self.L = L  # number of different labels
+    def __init__(self,phi,psi,G):
+        """ Computed in log space """
+        self.phi = self.safe_log(phi) # node potentials
+        self.psi = self.safe_log(psi) # edge potentials
+        self.G = G
+        self.L = psi.shape[0]  # number of different labels
 
-  def make_GR(self,G):
-    GR = {}
-    for i in G:
-      for j in G[i]:
-        if not j in GR: GR[j] = set([])
-        GR[j].add(i)
-    return GR
+    def safe_log(self,x,xclip=0.00000000001):
+        return np.log(x.clip(xclip))
 
-  def error(self,m1,m2):
-    err = 0.
-    n = 0
-    for i in m1:
-      for j in m1[i]:
-        n += 1
+    def error(self,m1,m2):
+        err = sum([abs(m1[k]-m2[k]) for k in range(self.L)]).sum()
+        return err / self.L
+
+    def fit(self, th=0.001):
+        m = {}
         for k in range(self.L):
-          err += abs(m1[i][j][k]-m2[i][j][k])
-    return err / n
+            m[k] = G.copy()
+        while True:
+            new_m = {}
+            m_prod = np.zeros((G.shape[0],self.L))
+            for k in range(self.L):
+                m_prod[:,k] = m[k].sum(axis=0)
+            sum_mk = []
+            for k in range(self.L):
+                sum_mk.append(logsumexp(self.phi+self.psi[:,k]+m_prod,axis=1))
+                new_m[k] = G.multiply(lil_matrix(logsumexp(self.phi+self.psi[:,k]+m_prod,axis=1))).T
+            sum_m = G.multiply(lil_matrix(logsumexp(sum_mk, axis=0))).T
+            for k in range(self.L):
+                new_m[k] -= sum_m # normalization
+            if self.error(new_m,m) < th:
+                break
+            else:
+                m = new_m
+        self.m = new_m
 
-  def fit(self, th=0.001):
-    m = {}
-    for i in self.G:
-      m[i] = {}
-      for j in self.G[i]:
-        m[i][j] = {}
-        for l in range(self.L): # number of labels
-          m[i][j][l] = 1.0 / self.L
-    while True:
-      new_m = {}
-      for i in self.G:
-        new_m[i] = {}
-        m_prod = {}
-        for s in range(self.L):
-          m_prod[s] = 1
-          for k in self.GR[i]:
-            m_prod[s] *= m[k][i][s]
-        for j in self.G[i]:
-          new_m[i][j] = {}
-          for l in range(self.L):
-            new_m[i][j][l] = 0
-            for s in range(self.L):
-              new_m[i][j][l] += self.phi[i][s]*self.psi[s][l]*m_prod[s]
-          sum_m = float(sum(new_m[i][j].values()))
-          for l in range(self.L):
-            new_m[i][j][l] /= sum_m
-      if self.error(new_m,m) < th:
-        break
-      else:
-        m = new_m
-    self.m = new_m
-
-  def predict(self,nid):
-    max_b = -1
-    max_label = -1
-    sum_b = 0.
-    for k in range(self.L):
-      b = self.phi[nid][k]
-      for j in self.GR[nid]:
-        b *= self.m[j][nid][k]
-      sum_b += b
-      if b > max_b:
-        max_b = b
-        max_label = k
-    return max_label,max_b/sum_b
+    def predict(self,nid):
+        b = self.phi[nid] + np.array([self.m[k][:,nid].sum() for k in range(self.L)])
+        p = np.exp(b) / np.exp(b).sum()
+        max_label = np.argmax(p)
+        return max_label,p[max_label]
 
 if __name__ == '__main__':
-  G = {1:set([2,3]),2:set([1,3]),3:set([1,2,4]),4:set([3])}
-  phi = {1:{0:0.,1:1.},2:{0:0.5,1:0.5},3:{0:0.9,1:0.1},4:{0:0.5,1:0.5}}
-  psi = {0:{0:0.51,1:0.49}, 1:{0:0.49,1:0.51}}
-  clf = MRF(phi,psi,G,2)
+  G = lil_matrix((4,4))
+  G[0,1]=1
+  G[0,2]=1
+  G[1,0]=1
+  G[1,2]=1
+  G[2,0]=1
+  G[2,1]=1
+  G[2,3]=1
+  G[3,2]=1
+  G.tocsr()
+
+  phi = np.zeros((4,2))
+  phi[0,1]=1.
+  phi[1,0]=0.5
+  phi[1,1]=0.5
+  phi[2,0]=0.9
+  phi[2,1]=0.1
+  phi[3,0]=0.5
+  phi[3,1]=0.5
+
+  psi = np.zeros((2,2))
+  psi[0,0] = 0.51
+  psi[0,1] = 0.49
+  psi[1,0] = 0.49
+  psi[1,1] = 0.51
+
+  clf = MRF(phi,psi,G)
   clf.fit()
+  print phi
+  print G.todense()
+  print clf.predict(0)
   print clf.predict(1)
   print clf.predict(2)
   print clf.predict(3)
-  print clf.predict(4)
