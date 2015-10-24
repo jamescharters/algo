@@ -29,7 +29,7 @@ class MRF:
             sum_mk = []
             for k in range(self.L):
                 sum_mk.append(logsumexp(self.phi+self.psi[:,k]+m_prod,axis=1))
-                new_m[k] = G.multiply(lil_matrix(logsumexp(self.phi+self.psi[:,k]+m_prod,axis=1))).T
+                new_m[k] = G.multiply(lil_matrix(sum_mk[-1])).T
             sum_m = G.multiply(lil_matrix(logsumexp(sum_mk, axis=0))).T
             for k in range(self.L):
                 new_m[k] -= sum_m # normalization
