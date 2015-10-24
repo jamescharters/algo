@@ -41,9 +41,9 @@ class MRF:
 
     def predict(self,nid):
         b = self.phi[nid] + np.array([self.m[k][:,nid].sum() for k in range(self.L)])
-        p = np.exp(b) / np.exp(b).sum()
+        p = b - logsumexp(b)
         max_label = np.argmax(p)
-        return max_label,p[max_label]
+        return max_label,np.exp(p[max_label])
 
 if __name__ == '__main__':
   G = lil_matrix((4,4))
