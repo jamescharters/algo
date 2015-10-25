@@ -23,7 +23,7 @@ class LGC:
         return np.argmax(self.F[node_list],axis=1)
 
     def predict_proba(self,node_list):
-        return np.max(self.F[node_list],axis=1)
+        return self.F[node_list] / np.sum(self.F[node_list], axis=1)
 
 if __name__ == '__main__':
     from scipy.sparse import lil_matrix
