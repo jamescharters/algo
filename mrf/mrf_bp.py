@@ -14,7 +14,7 @@ class MRF:
 
     def error(self,m1,m2):
         err = sum([abs(m1[k]-m2[k]) for k in range(self.L)]).sum()
-        n = sum([m1[k].nnz for k in range(self.L)])
+        n = m1[0].nnz
         return err / n
 
     def fit(self, th=0.001):
