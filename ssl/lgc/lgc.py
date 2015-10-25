@@ -23,7 +23,7 @@ class LGC:
         return np.argmax(self.F[node_list],axis=1)
 
     def predict_proba(self,node_list):
-        return self.F[node_list] / np.sum(self.F[node_list], axis=1)
+        return (self.F[node_list].T / np.sum(self.F[node_list], axis=1)).T
 
 if __name__ == '__main__':
     from scipy.sparse import lil_matrix
@@ -43,7 +43,7 @@ if __name__ == '__main__':
     Y[2,0]=0.9
     Y[2,1]=0.1
 
-    clf = LGC(alpha=0.9)
+    clf = LGC(alpha=0.99)
     clf.fit(Y,G)
     print G.todense()
     print clf.predict(np.array([0,1,2,3]))
