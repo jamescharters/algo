@@ -3,92 +3,69 @@ import numpy as np
 from scipy.sparse import lil_matrix
 
 class LDA:
-    def __init__(self, alpha, beta):
+    def __init__(self, alpha, beta, max_iter, verbose=0):
         self.alpha = alpha
         self.beta = beta
+        self.asum = self.alpha.sum()
+        self.bsum = self.beta.sum()
+        self.max_iter = max_iter
+        self.verbose=verbose
 
-    def fit(self,X,k,t=1000):
-        z = self.initialize_z(X, k)
-        i = 0
+    def fit(self,X):
+        self.N = len(X) # number of documents
+        self.K = self.alpha.shape[0] # number of topics
+        self.V = self.beta.shape[0] # number of vocabulary
+
+        self.z = self._init_z(X)
+        self.ndk, self.nkv = self._init_params(X)
+
+        remained_iter = self.max_iter
         while True:
-            ndk = self.update_ndk(z)
-            nkv = self.update_nkv(X, z)
-            z_new = self.update_z(X, z, ndk, nkv)
-            z = z_new
-            i += 1
-            if t <= i: break
-        theta = self.compute_theta(ndk)
-        phi = self.compute_phi(nkv)
-        return (z, theta, phi)
+            if self.verbose: print remained_iter
+            nk = self.nkv.sum(axis=1) # k-dimensional vector O(KV)
+            for d in range(self.N):
+                for i in range(len(X[d])):
+                    k = self.z[d][i]
+                    v = X[d][i]
 
-    def initialize_z(self, X, k):
+                    self.ndk[d][k] -= 1
+                    self.nkv[k][v] -= 1
+                    nk[k] -= 1
+
+                    self.z[d][i] = self._sample_z(X,d,v,nk)
+
+                    self.ndk[d][self.z[d][i]] += 1
+                    self.nkv[self.z[d][i]][v] += 1
+                    nk[self.z[d][i]] += 1
+            remained_iter -= 1
+            if remained_iter <= 0: break
+        return self
+
+    def _init_z(self,X):
         z = []
         for d in range(len(X)):
-            z.append(np.random.randint(low=0,high=k,size=len(X[d])))
+            z.append(np.random.randint(low=0,high=self.K,size=len(X[d])))
         return z
 
-    def update_ndk(self, z):
-        ndk = []
-        for d in range(len(z)):
-            ndk.append([])
-            for k in range(self.alpha.shape[0]):
-                ndk[d].append(np.sum(np.array(z[d])==k))
-        return ndk
-
-    def update_nkv(self, X, z):
-        nkv = []
-        stacked_X = np.hstack(X)
-        stacked_z = np.hstack(z)
-        for k in range(self.alpha.shape[0]):
-            nkv.append([])
-            for v in range(self.beta.shape[0]):
-                nkv[k].append(np.sum((stacked_X==v)&(stacked_z==k)))
-        return nkv
-
-    def update_z(self, X, old_z, ndk, nkv):
-        nd = []
-        for d in range(len(X)):
-            nd.append(.0)
-            for k in range(self.alpha.shape[0]):
-                nd[d] += ndk[d][k] + self.alpha[k]
-        nk = []
-        for k in range(self.alpha.shape[0]):
-            nk.append(.0)
-            for v in range(self.beta.shape[0]):
-                nk[k] += nkv[k][v] + self.beta[v]
-
-        z = []
-        for d in range(len(X)): # d
-            z.append([])
-            for i in range(len(X[d])): # i
+    def _init_params(self,X):
+        ndk = np.zeros((self.N,self.K)) + self.alpha
+        nkv = np.zeros((self.K,self.V)) + self.beta
+        for d in range(self.N):
+            for i in range(len(X[d])):
+                k = self.z[d][i]
                 v = X[d][i]
-                prob = []
-                for k in range(self.alpha.shape[0]):
-                    if old_z[d][i] == k:
-                        prob.append(((nkv[k][v]-1+self.beta[v])/(nk[k]-1))*((ndk[d][k]-1+self.alpha[k])/(nd[d]-1)))
-                    else:
-                        prob.append(((nkv[k][v]+self.beta[v])/(nk[k]-1))*((ndk[d][k]+self.alpha[k])/(nd[d]-1)))
-                prob = np.array(prob)
-                prob = prob/prob.sum()
-                z[d].append(np.argmax(np.random.multinomial(n=1, pvals=prob, size=1)))
+                ndk[d,k]+=1
+                nkv[k,v]+=1
+        return ndk,nkv
+
+    def _sample_z(self,X,d,v,nk):
+        ndk = self.ndk[d,:] # k-dimensional vector
+        nkv = self.nkv[:,v] # k-dimensional vector
+
+        prob = (ndk+self.alpha) *  ((nkv+self.beta[v])/(nk+self.bsum))
+        prob = prob/prob.sum()
+        z = np.random.multinomial(n=1, pvals=prob).argmax()
         return z
-
-    def compute_theta(self, ndk):
-        ndk = np.array(ndk)
-        theta = []
-        for d in range(ndk.shape[0]):
-            theta.append(np.random.dirichlet(alpha=ndk[d]+self.alpha, size=1))
-        theta = np.vstack(theta)
-        return theta
-
-    def compute_phi(self, nkv):
-        nkv = np.array(nkv)
-        phi = []
-        for k in range(nkv.shape[0]):
-            phi.append(np.random.dirichlet(alpha=nkv[k]+self.beta, size=1))
-        phi = np.vstack(phi)
-        return phi
-
 
 if __name__ == '__main__':
     X = [[0,0,1,1,2,2],[0,1,2],[3,4],[0,1,1,1,2],[3,4,4],[3,3,4,4],[0,0,4,4]]
@@ -96,9 +73,10 @@ if __name__ == '__main__':
     n_vocab = 5
     alpha = np.array([0.1]*n_topics)
     beta= np.array([0.1]*n_vocab)
-    lda = LDA(alpha=alpha, beta=beta)
-    z, theta, phi = lda.fit(X,len(alpha), 1000)
+    lda = LDA(alpha=alpha, beta=beta, max_iter=100, verbose=1)
+    lda.fit(X)
     print X
-    print z
-    print theta
-    print phi
+    print lda.z
+    print lda.ndk
+    print lda.nkv
+
